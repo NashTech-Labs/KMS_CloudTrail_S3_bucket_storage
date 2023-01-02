@@ -1,0 +1,58 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Resources:    
+    CloudTrailS3Bucket:
+      DependsOn:
+          - s3cloudtrailKey
+          - s3cloudtrailKeyAlias
+      Type: AWS::S3::Bucket
+      DeletionPolicy: Retain
+      Properties:
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              KMSMasterKeyID: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${s3cloudtrailKeyAlias}'
+              SSEAlgorithm: 'aws:kms'
+
+    CloudTrailBucketPolicy:
+      DependsOn:
+          - CloudTrailS3Bucket
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref CloudTrailS3Bucket
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Sid: "AWSCloudTrailAclCheck"
+              Effect: Allow
+              Principal:
+                Service: 'cloudtrail.amazonaws.com'
+              Action: "s3:GetBucketAcl"
+              Resource: !Sub arn:aws:s3:::${CloudTrailS3Bucket}
+            - Sid: "AWSCloudTrailWrite"
+              Effect: Allow
+              Principal:
+                Service: 'cloudtrail.amazonaws.com'
+              Action: "s3:PutObject"
+              Resource: !Sub arn:aws:s3:::${CloudTrailS3Bucket}/AWSLogs/${AWS::AccountId}/*
+              Condition:
+                StringEquals:
+                  's3:x-amz-acl': 'bucket-owner-full-control'
+     MyCloudTrail:
+      DependsOn:
+        - CloudTrailBucketPolicy
+        - cloudtrailKey
+      Type: AWS::CloudTrail::Trail
+      Properties:
+        S3BucketName: !Ref CloudTrailS3Bucket
+        IsLogging: true
+        KMSKeyId: !GetAtt cloudtrailKey.Arn      
+ Outputs:
+    CloudTrailS3BucketPolicy:
+        Description: 'S3 Bucket Policy for CloudTrail Logs'
+        Value:
+            Ref: 'CloudTrailBucketPolicy'
+    CloudTrail:
+        Description: 'CloudTrail'
+        Value:
+            Ref: 'MyCloudTrail'       
